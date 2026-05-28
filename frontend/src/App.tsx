@@ -2,7 +2,7 @@ import React from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { Roles } from "@smartoutage/shared";
 import { ProtectedRoute } from "./auth/ProtectedRoute";
-import { useAuth } from "./auth/AuthContext";
+import { roleToLandingPath, useAuth } from "./auth/AuthContext";
 
 import { LoginPage } from "./pages/LoginPage";
 import { UnauthorizedPage } from "./pages/UnauthorizedPage";
@@ -17,13 +17,13 @@ import { CrewHome } from "./pages/CrewHome";
 import { CustomerHome } from "./pages/CustomerHome";
 
 function RoleHomeRedirect() {
-  const { isAuthenticated, user } = useAuth();
+  const { isAuthenticated, isInitializing, user } = useAuth();
+
+  if (isInitializing) return null;
 
   if (!isAuthenticated || !user) return <Navigate to="/login" replace />;
 
-  if (user.role === Roles.OPERATOR) return <Navigate to="/operator" replace />;
-  if (user.role === Roles.CREW) return <Navigate to="/crew" replace />;
-  return <Navigate to="/customer" replace />;
+  return <Navigate to={roleToLandingPath(user.role)} replace />;
 }
 
 export function App() {
@@ -37,21 +37,21 @@ export function App() {
       {/* Operator */}
       <Route element={<ProtectedRoute allowedRoles={[Roles.OPERATOR]} />}>
         <Route element={<OperatorLayout />}>
-          <Route path="/operator" element={<OperatorHome />} />
+          <Route path="/operator/dashboard" element={<OperatorHome />} />
         </Route>
       </Route>
 
       {/* Crew */}
       <Route element={<ProtectedRoute allowedRoles={[Roles.CREW]} />}>
         <Route element={<CrewLayout />}>
-          <Route path="/crew" element={<CrewHome />} />
+          <Route path="/crew/jobs" element={<CrewHome />} />
         </Route>
       </Route>
 
       {/* Customer */}
       <Route element={<ProtectedRoute allowedRoles={[Roles.CUSTOMER]} />}>
         <Route element={<CustomerLayout />}>
-          <Route path="/customer" element={<CustomerHome />} />
+          <Route path="/customer/status" element={<CustomerHome />} />
         </Route>
       </Route>
 
