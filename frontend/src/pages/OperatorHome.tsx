@@ -1,9 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { OutageSeverity, OutageStatus } from "@smartoutage/shared";
-import type { CreateOutageRequest, Outage, OutageEvent, OutageSeverity as Sev } from "@smartoutage/shared";
+import type { CreateOutageRequest, CrewDispatchEvent, JobCard, Outage, OutageEvent, OutageSeverity as Sev } from "@smartoutage/shared";
 import { useAuth } from "../auth/AuthContext";
 import { createOutage, listActiveOutages, resolveOutage } from "../api/outages";
 import { subscribeToOutageEvents } from "../realtime/outagesWs";
+import { subscribeToCrewDispatchEvents } from "../realtime/crewDispatchWs";
 
 function formatDateTime(iso: string): string {
   const d = new Date(iso);
@@ -46,6 +48,29 @@ function removeById(list: Outage[], id: string): Outage[] {
   return list.filter((o) => o.id !== id);
 }
 
+function jobStatusLabel(status: string): string {
+  if (status === "assigned") return "Assigned";
+  if (status === "en_route") return "En Route";
+  if (status === "on_site") return "On Site";
+  if (status === "resolved") return "Resolved";
+  return status;
+}
+
+function jobStatusColors(status: string): { bg: string; fg: string; border: string } {
+  switch (status) {
+    case "assigned":
+      return { bg: "#EFF6FF", fg: "#1D4ED8", border: "#BFDBFE" };
+    case "en_route":
+      return { bg: "#FFFBEB", fg: "#92400E", border: "#FDE68A" };
+    case "on_site":
+      return { bg: "#ECFDF5", fg: "#065F46", border: "#A7F3D0" };
+    case "resolved":
+      return { bg: "#F3F4F6", fg: "#374151", border: "#E5E7EB" };
+    default:
+      return { bg: "#F3F4F6", fg: "#374151", border: "#E5E7EB" };
+  }
+}
+
 function modalBackdropStyle(): React.CSSProperties {
   return {
     position: "fixed",
@@ -79,6 +104,10 @@ export function OperatorHome() {
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const [wsConnected, setWsConnected] = useState(false);
+  const [dispatchWsConnected, setDispatchWsConnected] = useState(false);
+
+  // Track latest job per outage so operator sees crew status in real time.
+  const [jobsByOutageId, setJobsByOutageId] = useState<Record<string, JobCard>>({});
 
   // Form state (all required)
   const [location, setLocation] = useState("");
@@ -122,7 +151,7 @@ export function OperatorHome() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accessToken]);
 
-  // Realtime updates: apply ws events to local list immediately.
+  // Realtime updates: apply ws outage events to local list immediately.
   const subscriptionRef = useRef<{ close: () => void } | null>(null);
   useEffect(() => {
     if (!accessToken) return;
@@ -152,6 +181,31 @@ export function OperatorHome() {
     return () => {
       subscriptionRef.current?.close();
       subscriptionRef.current = null;
+    };
+  }, [accessToken]);
+
+  // Realtime updates: job assignment + crew status updates.
+  const dispatchSubRef = useRef<{ close: () => void } | null>(null);
+  useEffect(() => {
+    if (!accessToken) return;
+
+    dispatchSubRef.current?.close();
+    dispatchSubRef.current = subscribeToCrewDispatchEvents({
+      accessToken,
+      onConnectionChange: setDispatchWsConnected,
+      onEvent: (event: CrewDispatchEvent) => {
+        if (event.type === "job_assigned" || event.type === "job_status_updated") {
+          setJobsByOutageId((prev) => ({ ...prev, [event.job.outageId]: event.job }));
+        }
+      },
+      onError: () => {
+        // Non-fatal.
+      }
+    });
+
+    return () => {
+      dispatchSubRef.current?.close();
+      dispatchSubRef.current = null;
     };
   }, [accessToken]);
 
@@ -211,7 +265,7 @@ export function OperatorHome() {
       <div>
         <h2 style={{ margin: 0 }}>Outage Management</h2>
         <div style={{ marginTop: 6, color: "#6b7280", fontSize: 13 }}>
-          Operator dashboard for logging and resolving outages.{" "}
+          Operator dashboard for logging, dispatching, and resolving outages.{" "}
           <span
             style={{
               display: "inline-flex",
@@ -227,6 +281,22 @@ export function OperatorHome() {
             title={wsConnected ? "Realtime connected" : "Realtime disconnected (will auto-reconnect)"}
           >
             {wsConnected ? "Realtime: connected" : "Realtime: reconnecting"}
+          </span>
+          <span
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              marginLeft: 8,
+              padding: "2px 8px",
+              borderRadius: 999,
+              border: "1px solid #e5e7eb",
+              background: dispatchWsConnected ? "#ECFDF5" : "#F3F4F6",
+              color: dispatchWsConnected ? "#065F46" : "#374151"
+            }}
+            title={dispatchWsConnected ? "Dispatch realtime connected" : "Dispatch realtime disconnected (will auto-reconnect)"}
+          >
+            {dispatchWsConnected ? "Dispatch: connected" : "Dispatch: reconnecting"}
           </span>
         </div>
       </div>
@@ -369,28 +439,36 @@ export function OperatorHome() {
                 <th style={{ padding: "10px 8px" }}>Severity</th>
                 <th style={{ padding: "10px 8px" }}>Affected</th>
                 <th style={{ padding: "10px 8px" }}>Created</th>
+                <th style={{ padding: "10px 8px" }}>Job</th>
                 <th style={{ padding: "10px 8px" }}>Actions</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={6} style={{ padding: 12, color: "#6b7280" }}>
+                  <td colSpan={7} style={{ padding: 12, color: "#6b7280" }}>
                     Loading outages…
                   </td>
                 </tr>
               ) : outages.length === 0 ? (
                 <tr>
-                  <td colSpan={6} style={{ padding: 12, color: "#6b7280" }}>
+                  <td colSpan={7} style={{ padding: 12, color: "#6b7280" }}>
                     No active outages.
                   </td>
                 </tr>
               ) : (
                 outages.map((o) => {
                   const c = severityColors(o.severity);
+                  const job = jobsByOutageId[o.id];
+
                   return (
                     <tr key={o.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                      <td style={{ padding: "10px 8px", fontWeight: 600 }}>{o.location}</td>
+                      <td style={{ padding: "10px 8px", fontWeight: 600 }}>
+                        <Link to={`/operator/outages/${o.id}`} style={{ fontWeight: 800 }}>
+                          {o.location}
+                        </Link>
+                        <div style={{ color: "#6b7280", fontSize: 12, marginTop: 2 }}>View detail & dispatch →</div>
+                      </td>
                       <td style={{ padding: "10px 8px" }}>{o.faultType}</td>
                       <td style={{ padding: "10px 8px" }}>
                         <span
@@ -412,6 +490,28 @@ export function OperatorHome() {
                       </td>
                       <td style={{ padding: "10px 8px" }}>{o.affectedCustomers}</td>
                       <td style={{ padding: "10px 8px", color: "#374151" }}>{formatDateTime(o.createdAt)}</td>
+                      <td style={{ padding: "10px 8px" }}>
+                        {job ? (
+                          <span
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              padding: "3px 10px",
+                              borderRadius: 999,
+                              border: `1px solid ${jobStatusColors(job.status).border}`,
+                              background: jobStatusColors(job.status).bg,
+                              color: jobStatusColors(job.status).fg,
+                              fontWeight: 800,
+                              fontSize: 12
+                            }}
+                            title={`Job status: ${job.status}`}
+                          >
+                            {jobStatusLabel(job.status)}
+                          </span>
+                        ) : (
+                          <span style={{ color: "#6b7280", fontSize: 12 }}>—</span>
+                        )}
+                      </td>
                       <td style={{ padding: "10px 8px" }}>
                         <button
                           onClick={() => {

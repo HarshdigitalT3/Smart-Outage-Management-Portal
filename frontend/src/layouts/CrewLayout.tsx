@@ -11,7 +11,7 @@ export function CrewLayout() {
         <div style={{ fontWeight: 700, marginBottom: 12 }}>Crew</div>
         <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 16 }}>{user?.email}</div>
         <nav style={{ display: "grid", gap: 8 }}>
-          <Link to="/crew">Home</Link>
+          <Link to="/crew/jobs">My Jobs</Link>
         </nav>
         <button onClick={logout} style={{ marginTop: 16 }}>
           Logout

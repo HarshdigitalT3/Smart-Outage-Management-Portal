@@ -14,6 +14,7 @@ import { CustomerLayout } from "./layouts/CustomerLayout";
 
 import { OperatorHome } from "./pages/OperatorHome";
 import { OperatorLiveMap } from "./pages/OperatorLiveMap";
+import { OperatorOutageDetail } from "./pages/OperatorOutageDetail";
 import { CrewHome } from "./pages/CrewHome";
 import { CustomerHome } from "./pages/CustomerHome";
 
@@ -40,6 +41,7 @@ export function App() {
         <Route element={<OperatorLayout />}>
           <Route path="/operator/dashboard" element={<OperatorHome />} />
           <Route path="/operator/map" element={<OperatorLiveMap />} />
+          <Route path="/operator/outages/:outageId" element={<OperatorOutageDetail />} />
         </Route>
       </Route>
 
