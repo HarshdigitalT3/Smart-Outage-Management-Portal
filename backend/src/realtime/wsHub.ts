@@ -1,6 +1,6 @@
 import type http from "http";
 import { WebSocketServer, WebSocket } from "ws";
-import type { OutageEvent } from "@smartoutage/shared";
+import type { OutageEvent, CrewDispatchEvent } from "@smartoutage/shared";
 
 /**
  * Very small WebSocket hub:
@@ -38,9 +38,13 @@ export class WsHub {
   }
 
   // PUBLIC_INTERFACE
-  broadcast(event: OutageEvent) {
+  broadcast(event: OutageEvent | CrewDispatchEvent) {
     /**
-     * Broadcasts an outage event to all connected websocket clients.
+     * Broadcasts an event to all connected websocket clients.
+     *
+     * Currently used for:
+     * - outage realtime events (operator dashboards / maps)
+     * - crew dispatch + job card realtime events (operator assignment + crew updates)
      */
     const payload = JSON.stringify(event);
     for (const ws of this.clients) {
