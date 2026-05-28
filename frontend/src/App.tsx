@@ -13,6 +13,7 @@ import { CrewLayout } from "./layouts/CrewLayout";
 import { CustomerLayout } from "./layouts/CustomerLayout";
 
 import { OperatorHome } from "./pages/OperatorHome";
+import { OperatorLiveMap } from "./pages/OperatorLiveMap";
 import { CrewHome } from "./pages/CrewHome";
 import { CustomerHome } from "./pages/CustomerHome";
 
@@ -38,6 +39,7 @@ export function App() {
       <Route element={<ProtectedRoute allowedRoles={[Roles.OPERATOR]} />}>
         <Route element={<OperatorLayout />}>
           <Route path="/operator/dashboard" element={<OperatorHome />} />
+          <Route path="/operator/map" element={<OperatorLiveMap />} />
         </Route>
       </Route>
 

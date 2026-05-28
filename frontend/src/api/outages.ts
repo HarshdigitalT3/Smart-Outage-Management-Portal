@@ -4,6 +4,7 @@ import type {
   CreateOutageResponse,
   GetOutageDetailResponse,
   ListActiveOutagesResponse,
+  ListActiveOutagesMapResponse,
   ResolveOutageResponse,
   UpdateOutageStatusRequest,
   UpdateOutageStatusResponse
@@ -133,6 +134,32 @@ export async function resolveOutage(accessToken: string, outageId: string): Prom
 
   if (!res.ok) {
     let message = "Failed to resolve outage";
+    try {
+      const data = (await res.json()) as any;
+      message = data?.error?.message || message;
+    } catch {
+      // ignore
+    }
+    throw new Error(message);
+  }
+
+  return res.json();
+}
+
+// PUBLIC_INTERFACE
+export async function listActiveOutagesMapPoints(accessToken: string): Promise<ListActiveOutagesMapResponse> {
+  /**
+   * Calls backend GET /api/outages/map to list all active outages as map points (lat/lng + severity).
+   */
+  const res = await apiFetch("/api/outages/map", {
+    method: "GET",
+    headers: {
+      authorization: `Bearer ${accessToken}`
+    }
+  });
+
+  if (!res.ok) {
+    let message = "Failed to load outage map";
     try {
       const data = (await res.json()) as any;
       message = data?.error?.message || message;

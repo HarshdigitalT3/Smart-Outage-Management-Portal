@@ -12,6 +12,7 @@ export function OperatorLayout() {
         <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 16 }}>{user?.email}</div>
         <nav style={{ display: "grid", gap: 8 }}>
           <Link to="/operator/dashboard">Dashboard</Link>
+          <Link to="/operator/map">Live Map</Link>
         </nav>
         <button onClick={logout} style={{ marginTop: 16 }}>
           Logout
