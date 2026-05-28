@@ -15,10 +15,14 @@ import type {
 import {
   createOutage,
   getOutageById,
+  getOutageAuditById,
   insertOutageAudit,
   listActiveOutages,
   listActiveOutagesMapPoints,
+  listAudits,
   listAuditsForOutage,
+  listAuditsForResolvedOutagesExport,
+  listResolvedOutages,
   updateOutageStatus
 } from "../db/outages.js";
 import { wsHub } from "../singleton/ws.js";
@@ -42,6 +46,31 @@ const updateStatusSchema = z.object({
     OutageStatus.RESOLVED
   ])
 });
+
+const pagingSchema = z.object({
+  limit: z.coerce.number().int().min(1).max(1000).optional(),
+  offset: z.coerce.number().int().min(0).optional()
+});
+
+const exportSchema = z.object({
+  from: z
+    .string()
+    .datetime({ offset: true })
+    .optional()
+    .describe("ISO datetime with timezone offset; filters by outage.resolved_at >= from"),
+  to: z
+    .string()
+    .datetime({ offset: true })
+    .optional()
+    .describe("ISO datetime with timezone offset; filters by outage.resolved_at <= to")
+});
+
+function csvEscape(value: unknown): string {
+  // Minimal RFC4180-style escaping (quote fields containing comma, quote, or newline).
+  const s = value === null || value === undefined ? "" : String(value);
+  if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  return s;
+}
 
 /**
  * All outage-management endpoints are operator-only.
@@ -138,6 +167,125 @@ outagesRouter.get(
     const audits = await listAuditsForOutage(outage.id);
     const payload: GetOutageDetailResponse = { outage, audits };
     res.json(payload);
+  })
+);
+
+outagesRouter.get(
+  "/outages/resolved",
+  asyncHandler(async (req, res) => {
+    /**
+     * Lists resolved outages (history).
+     *
+     * Query:
+     * - limit (optional, 1..1000, default 100)
+     * - offset (optional, >=0, default 0)
+     *
+     * Returns: { outages }
+     */
+    const { limit, offset } = pagingSchema.parse(req.query);
+    const outages = await listResolvedOutages({ limit, offset });
+    res.json({ outages });
+  })
+);
+
+outagesRouter.get(
+  "/audits",
+  asyncHandler(async (req, res) => {
+    /**
+     * Lists outage audits across all outages, newest-first.
+     *
+     * Query:
+     * - limit (optional, 1..1000, default 200)
+     * - offset (optional, >=0, default 0)
+     *
+     * Returns: { audits }
+     */
+    const { limit, offset } = pagingSchema.parse(req.query);
+    const audits = await listAudits({ limit, offset });
+    res.json({ audits });
+  })
+);
+
+outagesRouter.get(
+  "/audits/:id",
+  asyncHandler(async (req, res) => {
+    /**
+     * Gets a single outage audit record by id.
+     *
+     * Returns: { audit }
+     */
+    const audit = await getOutageAuditById(req.params.id);
+    if (!audit) return res.status(404).json({ error: { message: "Audit not found", status: 404 } });
+    res.json({ audit });
+  })
+);
+
+outagesRouter.get(
+  "/audits/export.csv",
+  asyncHandler(async (req, res) => {
+    /**
+     * Exports audits for resolved outages as a CSV file.
+     *
+     * Query:
+     * - from (optional): ISO datetime with timezone offset; filters by outage.resolved_at >= from
+     * - to (optional): ISO datetime with timezone offset; filters by outage.resolved_at <= to
+     *
+     * Response: text/csv (download)
+     */
+    const { from, to } = exportSchema.parse(req.query);
+    const rows = await listAuditsForResolvedOutagesExport({
+      from: from ? new Date(from) : undefined,
+      to: to ? new Date(to) : undefined
+    });
+
+    const header = [
+      "auditId",
+      "auditCreatedAt",
+      "outageId",
+      "outageLocation",
+      "outageFaultType",
+      "outageSeverity",
+      "outageAffectedCustomers",
+      "outageStatus",
+      "outageCreatedAt",
+      "outageUpdatedAt",
+      "outageResolvedAt",
+      "actorUserId",
+      "action",
+      "detailsJson"
+    ];
+
+    const lines: string[] = [];
+    lines.push(header.join(","));
+    for (const r of rows) {
+      const detailsJson = JSON.stringify(r.details ?? {});
+      lines.push(
+        [
+          r.auditId,
+          r.auditCreatedAt,
+          r.outageId,
+          r.outageLocation,
+          r.outageFaultType,
+          r.outageSeverity,
+          r.outageAffectedCustomers,
+          r.outageStatus,
+          r.outageCreatedAt,
+          r.outageUpdatedAt,
+          r.outageResolvedAt ?? "",
+          r.actorUserId,
+          r.action,
+          detailsJson
+        ]
+          .map(csvEscape)
+          .join(",")
+      );
+    }
+
+    const csv = lines.join("\n");
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="resolved-outage-audits-${stamp}.csv"`);
+    res.status(200).send(csv);
   })
 );
 

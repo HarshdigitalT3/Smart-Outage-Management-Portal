@@ -23,6 +23,25 @@ type OutageAuditRow = {
   created_at: string;
 };
 
+type ResolvedOutageRow = OutageRow;
+
+type AuditExportRow = {
+  audit_id: string;
+  audit_created_at: string;
+  outage_id: string;
+  outage_location: string;
+  outage_fault_type: string;
+  outage_severity: OutageSeverity;
+  outage_affected_customers: number;
+  outage_status: OutageStatus;
+  outage_created_at: string;
+  outage_updated_at: string;
+  outage_resolved_at: string | null;
+  actor_user_id: string;
+  action: "created" | "status_updated" | "resolved";
+  details: any;
+};
+
 function mapOutage(row: OutageRow): Outage {
   return {
     id: row.id,
@@ -214,6 +233,134 @@ export async function updateOutageStatus(params: {
     [params.id, params.status, params.resolvedAt ? params.resolvedAt.toISOString() : null]
   );
   return res.rows[0] ? mapOutage(res.rows[0]) : null;
+}
+
+// PUBLIC_INTERFACE
+export async function listResolvedOutages(params?: { limit?: number; offset?: number }): Promise<Outage[]> {
+  /**
+   * Lists resolved outages, newest resolved first.
+   *
+   * Note: this is used by the operator UI (resolved history) and CSV export flow.
+   */
+  const limit = Math.min(Math.max(params?.limit ?? 100, 1), 1000);
+  const offset = Math.max(params?.offset ?? 0, 0);
+
+  const res = await pool.query<ResolvedOutageRow>(
+    `SELECT id, location, fault_type, severity, affected_customers, status, created_by, created_at, updated_at, resolved_at
+       FROM app_outages
+      WHERE status = 'resolved'
+      ORDER BY resolved_at DESC NULLS LAST, updated_at DESC
+      LIMIT $1 OFFSET $2`,
+    [limit, offset]
+  );
+  return res.rows.map(mapOutage);
+}
+
+// PUBLIC_INTERFACE
+export async function getOutageAuditById(auditId: string): Promise<OutageAudit | null> {
+  /**
+   * Fetches a single outage audit by audit id.
+   */
+  const res = await pool.query<OutageAuditRow>(
+    `SELECT id, outage_id, action, actor_user_id, details, created_at
+       FROM app_outage_audits
+      WHERE id = $1
+      LIMIT 1`,
+    [auditId]
+  );
+  return res.rows[0] ? mapAudit(res.rows[0]) : null;
+}
+
+// PUBLIC_INTERFACE
+export async function listAudits(params?: { limit?: number; offset?: number }): Promise<OutageAudit[]> {
+  /**
+   * Lists outage audits across all outages (newest-first).
+   */
+  const limit = Math.min(Math.max(params?.limit ?? 200, 1), 5000);
+  const offset = Math.max(params?.offset ?? 0, 0);
+
+  const res = await pool.query<OutageAuditRow>(
+    `SELECT id, outage_id, action, actor_user_id, details, created_at
+       FROM app_outage_audits
+      ORDER BY created_at DESC
+      LIMIT $1 OFFSET $2`,
+    [limit, offset]
+  );
+  return res.rows.map(mapAudit);
+}
+
+// PUBLIC_INTERFACE
+export async function listAuditsForResolvedOutagesExport(params?: {
+  from?: Date;
+  to?: Date;
+}): Promise<
+  Array<{
+    auditId: string;
+    auditCreatedAt: string;
+    outageId: string;
+    outageLocation: string;
+    outageFaultType: string;
+    outageSeverity: OutageSeverity;
+    outageAffectedCustomers: number;
+    outageStatus: OutageStatus;
+    outageCreatedAt: string;
+    outageUpdatedAt: string;
+    outageResolvedAt: string | null;
+    actorUserId: string;
+    action: "created" | "status_updated" | "resolved";
+    details: Record<string, unknown>;
+  }>
+> {
+  /**
+   * Returns a joined dataset (audits + outage snapshot columns) for CSV export.
+   *
+   * Optional filtering:
+   * - from/to apply to outage.resolved_at
+   */
+  const fromIso = params?.from ? params.from.toISOString() : null;
+  const toIso = params?.to ? params.to.toISOString() : null;
+
+  const res = await pool.query<AuditExportRow>(
+    `SELECT
+        a.id AS audit_id,
+        a.created_at AS audit_created_at,
+        a.outage_id AS outage_id,
+        o.location AS outage_location,
+        o.fault_type AS outage_fault_type,
+        o.severity AS outage_severity,
+        o.affected_customers AS outage_affected_customers,
+        o.status AS outage_status,
+        o.created_at AS outage_created_at,
+        o.updated_at AS outage_updated_at,
+        o.resolved_at AS outage_resolved_at,
+        a.actor_user_id AS actor_user_id,
+        a.action AS action,
+        a.details AS details
+     FROM app_outage_audits a
+     JOIN app_outages o ON o.id = a.outage_id
+    WHERE o.status = 'resolved'
+      AND ($1::timestamptz IS NULL OR o.resolved_at >= $1::timestamptz)
+      AND ($2::timestamptz IS NULL OR o.resolved_at <= $2::timestamptz)
+    ORDER BY o.resolved_at DESC NULLS LAST, a.created_at ASC`,
+    [fromIso, toIso]
+  );
+
+  return res.rows.map((r) => ({
+    auditId: r.audit_id,
+    auditCreatedAt: r.audit_created_at,
+    outageId: r.outage_id,
+    outageLocation: r.outage_location,
+    outageFaultType: r.outage_fault_type,
+    outageSeverity: r.outage_severity,
+    outageAffectedCustomers: r.outage_affected_customers,
+    outageStatus: r.outage_status,
+    outageCreatedAt: r.outage_created_at,
+    outageUpdatedAt: r.outage_updated_at,
+    outageResolvedAt: r.outage_resolved_at,
+    actorUserId: r.actor_user_id,
+    action: r.action,
+    details: (r.details ?? {}) as Record<string, unknown>
+  }));
 }
 
 // PUBLIC_INTERFACE
