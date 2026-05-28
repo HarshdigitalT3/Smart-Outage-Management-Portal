@@ -5,6 +5,7 @@ import { config } from "./config/env.js";
 import { apiRouter } from "./routes/index.js";
 import { notFound } from "./middleware/notFound.js";
 import { errorHandler } from "./middleware/errorHandler.js";
+import { startNotificationWorker } from "./services/notifications.js";
 
 // PUBLIC_INTERFACE
 export function createApp() {
@@ -12,6 +13,10 @@ export function createApp() {
    * Creates and configures the Express application instance.
    */
   const app = express();
+
+  // Start background worker to send/retry notification logs.
+  // Safe to call multiple times due to internal guard.
+  startNotificationWorker();
 
   app.use(helmet());
   app.use(

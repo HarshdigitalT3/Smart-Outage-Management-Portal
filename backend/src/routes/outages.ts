@@ -22,6 +22,7 @@ import {
   updateOutageStatus
 } from "../db/outages.js";
 import { wsHub } from "../singleton/ws.js";
+import { enqueueOutageNotifications } from "../services/notifications.js";
 
 export const outagesRouter = Router();
 
@@ -86,6 +87,9 @@ outagesRouter.post(
     wsHub.broadcast({ type: "outage_created", outage });
     // Also broadcast a map update snapshot so map views can update without replay logic.
     wsHub.broadcast({ type: "outages_map_updated", points: await listActiveOutagesMapPoints() });
+
+    // Fire-and-forget: enqueue notifications for async send/retry worker.
+    void enqueueOutageNotifications({ outage, eventType: "outage_created" });
 
     const payload: CreateOutageResponse = { outage };
     res.status(201).json(payload);
@@ -192,6 +196,9 @@ outagesRouter.post(
 
     wsHub.broadcast({ type: "outage_resolved", outage: updated });
     wsHub.broadcast({ type: "outages_map_updated", points: await listActiveOutagesMapPoints() });
+
+    // Fire-and-forget: enqueue notifications for async send/retry worker.
+    void enqueueOutageNotifications({ outage: updated, eventType: "outage_resolved" });
 
     const payload: ResolveOutageResponse = { outage: updated, audit };
     res.json(payload);
