@@ -37,6 +37,9 @@ export function App() {
 
       <Route path="/" element={<RoleHomeRedirect />} />
 
+      {/* Customer (public, no-login) */}
+      <Route path="/customer/status" element={<CustomerHome />} />
+
       {/* Operator */}
       <Route element={<ProtectedRoute allowedRoles={[Roles.OPERATOR]} />}>
         <Route element={<OperatorLayout />}>
@@ -51,13 +54,6 @@ export function App() {
       <Route element={<ProtectedRoute allowedRoles={[Roles.CREW]} />}>
         <Route element={<CrewLayout />}>
           <Route path="/crew/jobs" element={<CrewHome />} />
-        </Route>
-      </Route>
-
-      {/* Customer */}
-      <Route element={<ProtectedRoute allowedRoles={[Roles.CUSTOMER]} />}>
-        <Route element={<CustomerLayout />}>
-          <Route path="/customer/status" element={<CustomerHome />} />
         </Route>
       </Route>
 
