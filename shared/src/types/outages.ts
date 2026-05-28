@@ -72,7 +72,27 @@ export type ResolveOutageResponse = {
   audit: OutageAudit;
 };
 
+export type OutageMapPoint = {
+  outageId: string;
+  severity: OutageSeverity;
+  locationLabel: string;
+  affectedCustomers: number;
+  status: OutageStatus;
+  createdAt: string;
+  updatedAt: string;
+  resolvedAt: string | null;
+  /** Latitude in decimal degrees. */
+  lat: number;
+  /** Longitude in decimal degrees. */
+  lng: number;
+};
+
+export type ListActiveOutagesMapResponse = {
+  points: OutageMapPoint[];
+};
+
 export type OutageEvent =
   | { type: "outage_created"; outage: Outage }
   | { type: "outage_status_updated"; outage: Outage }
-  | { type: "outage_resolved"; outage: Outage };
+  | { type: "outage_resolved"; outage: Outage }
+  | { type: "outages_map_updated"; points: OutageMapPoint[] };

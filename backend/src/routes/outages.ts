@@ -8,10 +8,19 @@ import type {
   CreateOutageResponse,
   GetOutageDetailResponse,
   ListActiveOutagesResponse,
+  ListActiveOutagesMapResponse,
   ResolveOutageResponse,
   UpdateOutageStatusResponse
 } from "@smartoutage/shared";
-import { createOutage, getOutageById, insertOutageAudit, listActiveOutages, listAuditsForOutage, updateOutageStatus } from "../db/outages.js";
+import {
+  createOutage,
+  getOutageById,
+  insertOutageAudit,
+  listActiveOutages,
+  listActiveOutagesMapPoints,
+  listAuditsForOutage,
+  updateOutageStatus
+} from "../db/outages.js";
 import { wsHub } from "../singleton/ws.js";
 
 export const outagesRouter = Router();
@@ -75,6 +84,8 @@ outagesRouter.post(
     });
 
     wsHub.broadcast({ type: "outage_created", outage });
+    // Also broadcast a map update snapshot so map views can update without replay logic.
+    wsHub.broadcast({ type: "outages_map_updated", points: await listActiveOutagesMapPoints() });
 
     const payload: CreateOutageResponse = { outage };
     res.status(201).json(payload);
@@ -91,6 +102,20 @@ outagesRouter.get(
      */
     const outages = await listActiveOutages();
     const payload: ListActiveOutagesResponse = { outages };
+    res.json(payload);
+  })
+);
+
+outagesRouter.get(
+  "/outages/map",
+  asyncHandler(async (_req, res) => {
+    /**
+     * Lists all active outages as map points (coordinates + severity).
+     *
+     * Returns: { points }
+     */
+    const points = await listActiveOutagesMapPoints();
+    const payload: ListActiveOutagesMapResponse = { points };
     res.json(payload);
   })
 );
@@ -139,6 +164,7 @@ outagesRouter.patch(
     });
 
     wsHub.broadcast({ type: "outage_status_updated", outage: updated });
+    wsHub.broadcast({ type: "outages_map_updated", points: await listActiveOutagesMapPoints() });
 
     const payload: UpdateOutageStatusResponse = { outage: updated };
     res.json(payload);
@@ -165,6 +191,7 @@ outagesRouter.post(
     });
 
     wsHub.broadcast({ type: "outage_resolved", outage: updated });
+    wsHub.broadcast({ type: "outages_map_updated", points: await listActiveOutagesMapPoints() });
 
     const payload: ResolveOutageResponse = { outage: updated, audit };
     res.json(payload);

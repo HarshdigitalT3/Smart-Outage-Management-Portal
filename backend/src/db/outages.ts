@@ -1,5 +1,5 @@
 import { pool } from "./pool.js";
-import type { Outage, OutageAudit, OutageSeverity, OutageStatus } from "@smartoutage/shared";
+import type { Outage, OutageAudit, OutageMapPoint, OutageSeverity, OutageStatus } from "@smartoutage/shared";
 
 type OutageRow = {
   id: string;
@@ -49,6 +49,54 @@ function mapAudit(row: OutageAuditRow): OutageAudit {
   };
 }
 
+/**
+ * Derives stable pseudo-coordinates from a string key.
+ *
+ * This avoids calling external geocoding services in the scaffold while still enabling
+ * a functional map UI. The output is stable across requests for the same key.
+ *
+ * We keep points in a plausible service area bounding box.
+ */
+function deriveCoordinates(key: string): { lat: number; lng: number } {
+  // Simple 32-bit hash (deterministic).
+  let h = 2166136261;
+  for (let i = 0; i < key.length; i++) {
+    h ^= key.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  const u = h >>> 0;
+
+  // Bounding box (roughly Bay Area) - replace with real geocoding when available.
+  const latMin = 37.2;
+  const latMax = 37.95;
+  const lngMin = -122.55;
+  const lngMax = -121.75;
+
+  const frac1 = (u & 0xffff) / 0xffff;
+  const frac2 = ((u >>> 16) & 0xffff) / 0xffff;
+
+  const lat = latMin + (latMax - latMin) * frac1;
+  const lng = lngMin + (lngMax - lngMin) * frac2;
+
+  return { lat: Number(lat.toFixed(6)), lng: Number(lng.toFixed(6)) };
+}
+
+function mapOutageToMapPoint(outage: Outage): OutageMapPoint {
+  const { lat, lng } = deriveCoordinates(`${outage.location}::${outage.id}`);
+  return {
+    outageId: outage.id,
+    severity: outage.severity,
+    locationLabel: outage.location,
+    affectedCustomers: outage.affectedCustomers,
+    status: outage.status,
+    createdAt: outage.createdAt,
+    updatedAt: outage.updatedAt,
+    resolvedAt: outage.resolvedAt,
+    lat,
+    lng
+  };
+}
+
 // PUBLIC_INTERFACE
 export async function createOutage(params: {
   id: string;
@@ -83,6 +131,18 @@ export async function listActiveOutages(): Promise<Outage[]> {
       ORDER BY created_at DESC`
   );
   return res.rows.map(mapOutage);
+}
+
+// PUBLIC_INTERFACE
+export async function listActiveOutagesMapPoints(): Promise<OutageMapPoint[]> {
+  /**
+   * Lists all active outages as map points (coordinates + severity).
+   *
+   * Note: coordinates are derived deterministically from outage data (scaffold-friendly)
+   * and should be replaced with real geocoding when available.
+   */
+  const outages = await listActiveOutages();
+  return outages.map(mapOutageToMapPoint);
 }
 
 // PUBLIC_INTERFACE
