@@ -8,18 +8,23 @@ import type { OutageEvent, CrewDispatchEvent } from "@smartoutage/shared";
  * - Broadcasts server-side events to all connected clients
  *
  * Auth is handled via query param token (?token=JWT) for WS handshakes.
- * We keep the hub focused on broadcasting; route-level auth is handled separately.
+ * We keep the hub focused on broadcasting; upgrade-time auth (RBAC) is handled separately.
  */
 export class WsHub {
   private wss: WebSocketServer | null = null;
   private clients = new Set<WebSocket>();
 
   // PUBLIC_INTERFACE
-  attach(server: http.Server) {
+  attach(serverOrWss: http.Server | WebSocketServer) {
     /**
-     * Attaches a WebSocket server to an existing HTTP server.
+     * Attaches websocket handling for the realtime hub.
+     *
+     * Supported modes:
+     * - http.Server: ws manages HTTP upgrade automatically (no upgrade-time auth).
+     * - WebSocketServer (noServer): upgrade/auth is handled externally; we only handle
+     *   the 'connection' events and broadcasting.
      */
-    this.wss = new WebSocketServer({ server, path: "/ws" });
+    this.wss = serverOrWss instanceof WebSocketServer ? serverOrWss : new WebSocketServer({ server: serverOrWss, path: "/ws" });
 
     this.wss.on("connection", (socket) => {
       this.clients.add(socket);

@@ -5,7 +5,7 @@ import type { JwtClaims } from "@smartoutage/shared";
 import { Roles } from "@smartoutage/shared";
 
 /**
- * Applies operator-only auth to the WsHub's /ws endpoint by intercepting the upgrade.
+ * Applies role-based auth to the WsHub's /ws endpoint by intercepting the upgrade.
  * We validate the access token from the query string (?token=...).
  *
  * Note: browsers cannot set custom headers in WebSocket constructors reliably,
@@ -13,18 +13,16 @@ import { Roles } from "@smartoutage/shared";
  */
 
 // PUBLIC_INTERFACE
-export function registerOperatorOnlyWsAuth(server: http.Server) {
+export function registerRealtimeWsAuth(server: http.Server) {
   /**
-   * Registers an HTTP upgrade handler that enforces operator-only access to /ws.
+   * Registers an HTTP upgrade handler that enforces RBAC access to /ws.
    *
-   * This function must be called BEFORE creating the WebSocketServer, or must share
-   * the same upgrade handling. Since `ws` handles upgrade internally when given {server, path},
-   * we instead create a separate auth gate server and then let WsHub attach normally.
+   * Allowed roles:
+   * - Operator: needs outage + dispatch realtime updates (AC2)
+   * - Crew: needs job card realtime updates (AC4)
    *
-   * Implementation detail:
-   * - We create a "gate" WebSocketServer in noServer mode and close unauthorized upgrades.
-   * - WsHub uses its own WebSocketServer on the same path. To avoid collisions, WsHub
-   *   should be attached AFTER this gate and we forward authorized upgrades to it.
+   * Customer is intentionally excluded from realtime websockets; customers use the public
+   * postcode lookup endpoint instead (AC5).
    */
   const gate = new WebSocketServer({ noServer: true });
 
@@ -41,19 +39,17 @@ export function registerOperatorOnlyWsAuth(server: http.Server) {
       }
 
       const decoded = verifyAccessToken(token) as JwtClaims;
-      if (decoded.role !== Roles.OPERATOR) {
+      const allowed = decoded.role === Roles.OPERATOR || decoded.role === Roles.CREW;
+      if (!allowed) {
         socket.write("HTTP/1.1 403 Forbidden\r\n\r\n");
         socket.destroy();
         return;
       }
 
-      // Authorized: accept the upgrade on the gate and immediately close.
-      // The actual WsHub server will accept a separate upgrade; this gate is purely
-      // to ensure unauthorized upgrades are blocked early.
+      // Authorized: accept the upgrade on the gate. The WsHub attaches to this gate (noServer mode)
+      // so there is only a single websocket connection.
       gate.handleUpgrade(req, socket, head, (ws) => {
-        // Immediately close this gate connection; the client will reconnect and be accepted
-        // by the main hub. This avoids a second open socket.
-        ws.close();
+        gate.emit("connection", ws, req);
       });
     } catch {
       socket.write("HTTP/1.1 400 Bad Request\r\n\r\n");
