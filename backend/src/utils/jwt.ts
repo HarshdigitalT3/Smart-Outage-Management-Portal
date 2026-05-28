@@ -1,4 +1,4 @@
-import jwt from "jsonwebtoken";
+import jwt, { type Secret, type SignOptions } from "jsonwebtoken";
 import { config } from "../config/env.js";
 import type { AuthUser, JwtClaims } from "@smartoutage/shared";
 
@@ -26,8 +26,8 @@ export function signAccessToken(user: AuthUser): string {
    * This token is used for Authorization: Bearer on protected endpoints.
    */
   const payload: AccessTokenClaims = { sub: user.id, email: user.email, role: user.role };
-  return jwt.sign(payload, config.jwt.secret, {
-    expiresIn: config.jwt.expiresIn,
+  return jwt.sign(payload, config.jwt.secret as Secret, {
+    expiresIn: config.jwt.expiresIn as SignOptions["expiresIn"],
     issuer: config.jwt.issuer || undefined,
     audience: config.jwt.audience || undefined
   });
@@ -51,8 +51,8 @@ export function signRefreshToken(userId: string, jti: string): string {
    * This token is exchanged for a new access token via /api/auth/refresh.
    */
   const payload = { sub: userId, jti };
-  return jwt.sign(payload, config.refreshJwt.secret, {
-    expiresIn: config.refreshJwt.expiresIn,
+  return jwt.sign(payload, config.refreshJwt.secret as Secret, {
+    expiresIn: config.refreshJwt.expiresIn as SignOptions["expiresIn"],
     issuer: config.jwt.issuer || undefined,
     audience: config.jwt.audience || undefined
   });

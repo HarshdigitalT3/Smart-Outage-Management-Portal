@@ -1,7 +1,9 @@
 import type { Request, Response, NextFunction, RequestHandler } from "express";
 
 // PUBLIC_INTERFACE
-export function asyncHandler(fn: (req: Request, res: Response, next: NextFunction) => Promise<void>): RequestHandler {
+export function asyncHandler(
+  fn: (req: Request, res: Response, next: NextFunction) => Promise<unknown> | unknown
+): RequestHandler {
   /**
    * Wraps an async route handler and forwards errors to Express error middleware.
    */
