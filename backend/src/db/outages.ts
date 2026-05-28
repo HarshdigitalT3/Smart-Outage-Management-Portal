@@ -215,3 +215,32 @@ export async function updateOutageStatus(params: {
   );
   return res.rows[0] ? mapOutage(res.rows[0]) : null;
 }
+
+// PUBLIC_INTERFACE
+export async function findActiveOutageForPostcode(postcode: string): Promise<Outage | null> {
+  /**
+   * Finds the most relevant active outage for a given postcode.
+   *
+   * IMPORTANT: The current scaffold schema has no dedicated postcode/service-area mapping.
+   * To enable the customer self-serve portal without adding migrations in this step,
+   * we treat `app_outages.location` as a free-text field and match when it contains the
+   * postcode substring (case-insensitive).
+   *
+   * Future enhancement: introduce structured outage service areas (e.g. a join table)
+   * and replace this implementation with an indexed lookup.
+   */
+  const cleaned = postcode.trim();
+  if (!cleaned) return null;
+
+  const res = await pool.query<OutageRow>(
+    `SELECT id, location, fault_type, severity, affected_customers, status, created_by, created_at, updated_at, resolved_at
+       FROM app_outages
+      WHERE status <> 'resolved'
+        AND location ILIKE $1
+      ORDER BY updated_at DESC
+      LIMIT 1`,
+    [`%${cleaned}%`]
+  );
+
+  return res.rows[0] ? mapOutage(res.rows[0]) : null;
+}
