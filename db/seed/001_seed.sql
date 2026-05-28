@@ -27,3 +27,12 @@ VALUES (
   'customer'
 )
 ON CONFLICT (email) DO NOTHING;
+
+-- Crew roster (job dispatch). In this scaffold, crews are backed by app_users with role='crew'.
+INSERT INTO app_crews (id, user_id, display_name)
+VALUES (
+  gen_random_uuid(),
+  '00000000-0000-0000-0000-000000000002',
+  'Field Crew 1'
+)
+ON CONFLICT (user_id) DO NOTHING;
