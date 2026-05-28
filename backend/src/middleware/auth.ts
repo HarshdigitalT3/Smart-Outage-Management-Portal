@@ -1,7 +1,6 @@
 import type { RequestHandler } from "express";
-import jwt from "jsonwebtoken";
-import { config } from "../config/env.js";
 import type { JwtClaims, AuthUser } from "@smartoutage/shared";
+import { verifyAccessToken } from "../utils/jwt.js";
 
 // PUBLIC_INTERFACE
 export const requireAuth: RequestHandler = (req, _res, next) => {
@@ -18,10 +17,7 @@ export const requireAuth: RequestHandler = (req, _res, next) => {
 
   const token = header.slice("bearer ".length).trim();
   try {
-    const decoded = jwt.verify(token, config.jwt.secret, {
-      issuer: config.jwt.issuer || undefined,
-      audience: config.jwt.audience || undefined
-    }) as JwtClaims;
+    const decoded = verifyAccessToken(token) as JwtClaims;
 
     const user: AuthUser = { id: decoded.sub, email: decoded.email, role: decoded.role };
     req.user = user;
