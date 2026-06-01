@@ -1,0 +1,16 @@
+{
+  "name": "smart-outage-management-portal",
+  "private": true,
+  "workspaces": [
+    "backend",
+    "frontend",
+    "shared"
+  ],
+  "scripts": {
+    "dev:backend": "npm --workspace backend run dev",
+    "dev:frontend": "npm --workspace frontend run dev",
+    "dev": "npm run dev:backend & npm run dev:frontend",
+    "build": "npm --workspace shared run build && npm --workspace backend run build && npm --workspace frontend run build",
+    "lint": "npm --workspace backend run lint && npm --workspace frontend run lint && npm --workspace shared run lint"
+  }
+}
